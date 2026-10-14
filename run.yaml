@@ -13,7 +13,7 @@ run_commands:
 test_commands: []
   # optional -- commands that run your own tests/checks, if you have any
 
-notes: ""
+notes: "CPU-friendly sparse-frame feature extraction and Logistic Regression. Training requires a labelled CSV from the supplied corpus. First inference downloads pretrained torchvision MobileNetV3-Small weights."
   # anything we should know before running this (e.g. "needs a GPU",
   # "takes about 10 minutes", "expects a sample dataset already present
   # under data/, see docs/ for where to get it")
