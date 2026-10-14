@@ -1,10 +1,8 @@
-# Fill this in before you submit -- our evaluator runs these commands
-# EXACTLY as written, in this order, from a fresh checkout of your fork.
-# Keep every command non-interactive (no prompts) and idempotent.
-
+# Commands execute from the repository root.
 setup_commands:
   - "pip install -r requirements.txt"
 run_commands:
   - "python src/main.py --help"
-test_commands: []
-notes: "CPU-friendly sparse-frame feature extraction and Logistic Regression. Training requires a labelled CSV from the supplied corpus. First inference downloads pretrained torchvision MobileNetV3-Small weights."
+test_commands:
+  - "python -m unittest discover -s tests -v"
+notes: "Training and real-video inference require a labelled corpus. Do not report unmeasured accuracy. First inference downloads pretrained torchvision weights."

@@ -1,26 +1,28 @@
 # Problem 1.1 — Video Classifier
 
-A lightweight video-type router that predicts which chunking policy should index a video.
+A lightweight video-type classifier that routes videos to appropriate chunking strategies.
 
-## Quick start
-
+## Setup
 ```bash
 pip install -r requirements.txt
-python src/main.py --help
 ```
 
-Create a labelled CSV with `video_path,label` columns (see `src/labels.csv.example`), then train:
+## Tests
+```bash
+python -m unittest discover -s tests -v
+```
+These tests verify basic code behavior only; they do not measure real-world classification accuracy.
+
+## Train
+Create `src/labels.csv` with `video_path,label` columns. Use actual video paths and labels from your corpus. See `src/labels.csv.example`.
 
 ```bash
 python src/main.py train --csv src/labels.csv --model artifacts/video_classifier.joblib
 ```
 
-Predict:
-
+## Predict
 ```bash
-python src/main.py predict --model artifacts/video_classifier.joblib data/incoming.mp4
+python src/main.py predict --model artifacts/video_classifier.joblib data/unseen_video.mp4 --output predictions.json
 ```
 
-Read [`docs/design.md`](docs/design.md) for taxonomy, feature engineering, evaluation, and deployment plan.
-
-**Important:** the repository task does not provide a labelled training manifest in the visible starter files. The classifier must be trained on labelled examples from the provided corpus before it can make meaningful predictions. The first feature-extraction run downloads pretrained MobileNetV3-Small weights.
+The prediction video should be excluded from the training set. First feature extraction downloads pretrained MobileNetV3-Small weights. See `docs/design.md` for feature engineering, evaluation, and deployment.

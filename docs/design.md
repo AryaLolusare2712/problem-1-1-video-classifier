@@ -1,99 +1,59 @@
-# Video Classifier: Design, Feature Engineering and Deployment
+# Video Classifier — Design and Deployment
 
-## 1. Objective
+## Goal
+Predict the dominant video format so an indexing pipeline can select a suitable chunking strategy. The classifier routes videos; it does not itself create the final chunks.
 
-Predict a **video type that determines how the downstream index should chunk the video**. This is not intended to classify every action or produce captions. It routes each video to a suitable chunking policy.
+## Taxonomy and routing
+| Class | Chunking strategy |
+|---|---|
+| gameplay | `state_change_and_event` |
+| egocentric | `activity_and_temporal` |
+| podcast | `speech_turn_and_topic` |
+| wildlife | `scene_and_activity` |
+| sports | `event_and_play` |
+| news_lecture | `topic_and_slide` |
+| music_performance | `music_segment_and_performance` |
+| film_animation | `scene_and_shot` |
+| surveillance | `activity_and_time_window` |
+| general | `adaptive_scene_and_semantic` |
 
-## 2. Taxonomy and chunking policy
+A mixed video receives one dominant label in this baseline. Window-level routing can be added later.
 
-| Class | Typical cues | Recommended chunking |
-|---|---|---|
-| `gameplay` | game UI, screen capture, HUD, rapid state changes | Split at scene/state changes and meaningful events; retain short context overlap |
-| `egocentric` | first-person camera, hands, continuous real-world movement | Activity boundaries and temporal windows; preserve action continuity |
-| `podcast` | one or more people speaking, studio/interview framing | Speech turns and topic boundaries; align to transcript timestamps |
-| `wildlife` | animals in natural environments | Scene plus animal/activity changes; longer windows when activity is continuous |
-| `sports` | field/court, athletes, play and scoreboard | Plays, possession changes, goals/points and replays |
-| `news_lecture` | presenter, slides, classroom/news set | Topic, slide and speaker transitions |
-| `music_performance` | instruments, stage, musical performance | Musical sections and performance changes |
-| `film_animation` | cinematic shots, animation, narrative scenes | Shot/scene boundaries with narrative context |
-| `surveillance` | fixed camera, repeated view, monitoring | Time windows and detected activity intervals |
-| `general` | unknown, mixed, or low-confidence content | Adaptive scene boundaries plus semantic overlap |
+## Architecture
+1. Uniformly sample eight frames per video.
+2. Extract visual embeddings with pretrained MobileNetV3-Small.
+3. Aggregate frame embeddings using their mean and standard deviation.
+4. Add inexpensive frame-difference, coarse scene-cut, duration, FPS, resolution, aspect-ratio and sampling-coverage features.
+5. Standardize the fixed-length feature vector and train class-balanced Logistic Regression.
+6. Return predicted class, confidence and chunking strategy. Low-confidence predictions route to `general` and are marked for review.
 
-A video may contain multiple types. This first version assigns one dominant routing label to the whole video. A future extension can classify short windows independently and switch chunkers within a video.
+The backbone is frozen, so only the lightweight classifier is fitted. The first run downloads pretrained torchvision weights.
 
-## 3. Lightweight architecture
+## Feature engineering
+- **Visual:** MobileNetV3-Small embeddings capture scene, object and texture cues. Mean represents typical content; standard deviation captures visual variation.
+- **Temporal:** normalized mean absolute differences between sampled grayscale frames estimate visual change. Their mean, standard deviation and thresholded cut rate are cheap proxies, not full motion analysis.
+- **Metadata:** log duration, FPS, width and height, plus aspect ratio. Metadata should supplement rather than replace visual evidence.
+- **Data hygiene:** use labels that represent dominant video type. Split by creator/source where possible to prevent near-duplicate leakage. Report macro-F1, per-class precision/recall, confusion matrix, latency and model size. Accuracy alone is insufficient for imbalanced classes.
 
-1. Decode a small number of uniformly sampled frames (default: 8), not every frame.
-2. Run each frame through pretrained **MobileNetV3-Small** and global-average-pool its feature map.
-3. Aggregate frame embeddings using their mean and standard deviation. The mean represents overall visual content; the standard deviation captures variation over time.
-4. Append inexpensive temporal and metadata features: average frame difference, variability of frame difference, coarse scene-cut rate, duration, frame rate, dimensions, aspect ratio and sample coverage.
-5. Standardize features and train a balanced, regularized multinomial Logistic Regression classifier.
-6. Return class, confidence and the corresponding chunking strategy. Low-confidence predictions are routed to `general` and marked for review.
+## Dataset format
+Create a CSV with `video_path,label`, using real paths and manually verified labels. Use varied sources, lengths, resolutions and recording conditions. Start with several dozen to hundreds of examples per class where possible. No actual dataset or performance result is bundled with this starter.
 
-The CNN backbone is pretrained and frozen, so only the small classifier is fitted on the target corpus. This reduces training cost and avoids training a large video transformer from scratch. The first run downloads the torchvision MobileNetV3-Small pretrained weights.
-
-## 4. Feature engineering
-
-### Visual embedding
-For each sampled frame, MobileNetV3-Small produces a compact representation of objects, textures and scene appearance. Use `mean(embeddings)` and `std(embeddings)` across frames instead of concatenating all frame embeddings. This gives a fixed-size vector regardless of video duration.
-
-### Temporal features
-Resize frames to 64×64 grayscale and calculate normalized mean absolute differences between consecutive sampled frames. Their mean approximates visual change; standard deviation measures irregularity; the fraction above a threshold estimates abrupt cuts. These are low-cost signals, not a replacement for optical flow or a learned temporal model.
-
-### Metadata
-Use log-scaled duration, frame rate, width and height, plus aspect ratio. Metadata helps identify screen captures, long fixed-camera footage and common format patterns, but should never dominate visual evidence.
-
-### Data and leakage prevention
-Create a labelled manifest with `video_path,label`. Labels should describe the dominant content format, not the chunking output. Split by source video/channel/creator where possible, so near-duplicate clips from the same source cannot leak between train and test. Use a held-out set and report macro-F1, per-class precision/recall, confusion matrix, latency and model size. Accuracy alone can hide rare-class failures.
-
-## 5. Training data
-
-No labelled corpus was included in the repository statement visible to this implementation. Supply a CSV with columns `video_path,label` and labelled examples from the provided corpus. Include diverse lengths, resolutions, camera styles, creators and class balance. Start with a few hundred labelled examples per class if available, then use active learning to label low-confidence and misclassified cases. Do not report performance until measured on a held-out dataset.
-
-Example:
-```csv
-video_path,label
-data/gameplay_001.mp4,gameplay
-data/podcast_001.mp4,podcast
-data/wildlife_001.mp4,wildlife
-data/sports_001.mp4,sports
-```
-
-## 6. Run locally
-
+## Local commands
 ```bash
 pip install -r requirements.txt
+python -m unittest discover -s tests -v
 python src/main.py --help
 python src/main.py train --csv src/labels.csv --model artifacts/video_classifier.joblib
-python src/main.py predict --model artifacts/video_classifier.joblib --threshold 0.45 data/incoming.mp4
+python src/main.py predict --model artifacts/video_classifier.joblib data/unseen_video.mp4 --output predictions.json
 ```
+The unseen video should not appear in the training manifest. The CSV paths are resolved relative to the current working directory.
 
-The CSV paths must be accessible from the working directory. OpenCV must be able to decode the video formats. The first run may download pretrained weights from torchvision.
+## Deployment plan
+**Offline:** store labelled data in object storage; cache extracted features by video checksum and feature version; train and validate; version model, label map, feature schema and chunking policy together.
 
-## 7. Deployment plan
+**Online:** validate uploads, store video in object storage, enqueue a job (Redis/SQS), then let a bounded CPU worker sample frames and run inference. Return class, confidence, chunking strategy and model version to the indexing service. Use `general` for low confidence or decode failures. Cache by content hash and apply timeouts/retries.
 
-**Offline training**
-- Store labelled manifest and source videos in object storage or a versioned dataset.
-- Run feature extraction in a batch job; cache embeddings by video checksum and extractor version.
-- Train Logistic Regression, evaluate per-class metrics and calibrate the confidence threshold on validation data.
-- Version the classifier, feature schema, label mapping and chunking policy together.
+**Scale and monitoring:** start with CPU workers and batch frame inference where useful. Consider ONNX/quantization only after validating parity. Monitor p50/p95 latency, decode failures, confidence drift, class distribution and downstream chunking quality.
 
-**Online inference**
-- Upload/API gateway validates file type and size and stores the video in object storage.
-- A queue (e.g. Redis/SQS) sends a job to CPU inference workers. Decode only 8 frames and batch frames across videos when throughput permits.
-- Worker returns `{class, confidence, chunking_strategy, model_version}` to the indexing pipeline.
-- If confidence is below the calibrated threshold, route to `general` or human review.
-- Cache by content hash; use bounded worker concurrency, timeouts and retries. Keep video decoding separate from model serving.
-
-**Scaling**
-- Use CPU workers initially; use GPU only if measured throughput justifies it.
-- Export/quantize the backbone to ONNX or a supported inference runtime only after validating accuracy parity.
-- Monitor latency percentiles, decode failures, class distribution, confidence drift and chunking quality. Retrain when new sources or new video types shift the distribution.
-
-## 8. Limitations and next steps
-
-- A single label can oversimplify mixed-format videos.
-- Visual-only features may confuse podcast vs lecture or sports vs gameplay. Add lightweight audio speech/music features and OCR/ASR-derived signals if the corpus and runtime budget justify them.
-- Logistic Regression probabilities may be miscalibrated; calibrate with held-out data before treating 0.45 as a production threshold.
-- The frame-difference scene-cut signal is coarse.
-- No measured performance is claimed until training and evaluation are run on the actual corpus.
+## Limitations
+Visual-only features can confuse related formats such as podcasts and lectures or gameplay and sports. Audio speech/music cues, OCR and ASR can improve routing at added cost. The confidence threshold is a configurable heuristic and should be calibrated on validation data. Do not claim performance until measured on a held-out dataset.
