@@ -1,13 +1,26 @@
-# Problem 1.1: Video Classifier
+# Problem 1.1 — Video Classifier
 
-## Submission instructions
+A lightweight video-type router that predicts which chunking policy should index a video.
 
-1. Install the **AIntropy Grader Bot** GitHub App (https://github.com/apps/aintropy-grader-bot) and grant it access to your fork, if you haven't already — we can't evaluate your submission without this.
-2. Put your code under `src/`.
-3. Put your write-up under `docs/` — markdown, slides, a notebook, or another format of your choosing are all fine, as long as it's committed in this repo.
-4. Fill in `run.yaml` with the **exact** commands needed to set up and run your code. We run these commands exactly as written to evaluate your submission — this is the one part of the submission we read literally, not loosely: if `run.yaml` doesn't work, we can't see your code run.
-5. Push to your own fork's default branch any time during your test's time limit. No pull request is needed or expected.
+## Quick start
 
-Once you start the test you have until your test's time limit to complete the assignment — see your invitation email for the exact duration. We ignore any commits pushed to your repo after that.
+```bash
+pip install -r requirements.txt
+python src/main.py --help
+```
 
-Questions? careers@aintropy.ai
+Create a labelled CSV with `video_path,label` columns (see `src/labels.csv.example`), then train:
+
+```bash
+python src/main.py train --csv src/labels.csv --model artifacts/video_classifier.joblib
+```
+
+Predict:
+
+```bash
+python src/main.py predict --model artifacts/video_classifier.joblib data/incoming.mp4
+```
+
+Read [`docs/design.md`](docs/design.md) for taxonomy, feature engineering, evaluation, and deployment plan.
+
+**Important:** the repository task does not provide a labelled training manifest in the visible starter files. The classifier must be trained on labelled examples from the provided corpus before it can make meaningful predictions. The first feature-extraction run downloads pretrained MobileNetV3-Small weights.
